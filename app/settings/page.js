@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import PageSkeleton from "@/components/PageSkeleton";
 const FLAG_DEFAULTS = {
 badge_new_color: "#6fae54",
 badge_pair_color: "#4f8bd6",
@@ -188,7 +189,7 @@ document.documentElement.style.setProperty(VAR_MAP[key], value);
 }
 }
 if (session === undefined || !loaded) {
-return <div className="loading-screen">Loading settings&hellip;</div>;
+return <PageSkeleton cards={2} />;
 }
 return (
 <div className="page">

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import PageSkeleton from "@/components/PageSkeleton";
 const TICKET_STATUSES = ["Open", "Completed", "Paid"];
 function money(n) {
 const num = Number(n) || 0;
@@ -209,7 +210,7 @@ const printTicket = useMemo(
 [tickets, printTicketId]
 );
 if (session === undefined || !loaded) {
-return <div className="loading-screen">Loading job tickets&hellip;</div>;
+return <PageSkeleton cards={4} />;
 }
 return (
 <div className="page">

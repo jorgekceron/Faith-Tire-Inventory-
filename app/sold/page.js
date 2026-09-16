@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { parsePrice } from "@/lib/tireUtils";
+import PageSkeleton from "@/components/PageSkeleton";
 export default function SoldPage() {
 const router = useRouter();
 const [session, setSession] = useState(undefined);
@@ -106,7 +107,7 @@ anyPriced = true;
 return anyPriced ? sum : null;
 }, [items]);
 if (session === undefined || !loaded) {
-return <div className="loading-screen">Loading sold report&hellip;</div>;
+return <PageSkeleton cards={3} />;
 }
 return (
 <div className="page">

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { parsePrice } from "@/lib/tireUtils";
+import PageSkeleton from "@/components/PageSkeleton";
 export default function HomePage() {
 const router = useRouter();
 const [session, setSession] = useState(undefined);
@@ -57,7 +58,7 @@ active = false;
 };
 }, [session]);
 if (session === undefined || !loaded) {
-return <div className="loading-screen">Loading dashboard&hellip;</div>;
+return <PageSkeleton cards={4} />;
 }
 return (
 <div className="page">

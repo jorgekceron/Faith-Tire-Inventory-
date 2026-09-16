@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { ORDER_STATUSES } from "@/lib/tireUtils";
+import PageSkeleton from "@/components/PageSkeleton";
 function money(n) {
 const num = Number(n) || 0;
 return "$" + num.toFixed(2);
@@ -184,7 +185,7 @@ function handlePrint() {
 window.print();
 }
 if (session === undefined || !loaded) {
-return <div className="loading-screen">Loading orders&hellip;</div>;
+return <PageSkeleton cards={3} />;
 }
 return (
 <div className="page">

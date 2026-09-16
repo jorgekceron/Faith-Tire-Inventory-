@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import PageSkeleton from "@/components/PageSkeleton";
 import {
 RIM_ORDER,
 sortCompare,
@@ -240,7 +241,7 @@ const locationGroups = useMemo(() => groupByLocation(printableTires), [printable
 const flagGroups = useMemo(() => groupByFlag(printableTires), [printableTires]);
 const fullListSorted = useMemo(() => [...printableTires].sort(sortCompare), [printableTires]);
 if (session === undefined || !loaded) {
-return <div className="loading-screen">Loading inventory&hellip;</div>;
+return <PageSkeleton cards={6} />;
 }
 return (
 <div className="page">
