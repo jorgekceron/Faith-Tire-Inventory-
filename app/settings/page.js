@@ -88,7 +88,7 @@ active = false;
 async function loadServices() {
 const { data, error } = await supabase
 .from("services")
-.select("*")
+.select("*, service_addons(*)")
 .order("category", { ascending: true })
 .order("name", { ascending: true });
 if (!error) setServices(data || []);
@@ -100,6 +100,9 @@ loadServices();
 const channel = supabase
 .channel("settings-services-changes")
 .on("postgres_changes", { event: "*", schema: "public", table: "services" }, () => {
+if (active) loadServices();
+})
+.on("postgres_changes", { event: "*", schema: "public", table: "service_addons" }, () => {
 if (active) loadServices();
 })
 .subscribe();
@@ -252,7 +255,7 @@ className="color-input"
 <div className="empty">No services yet</div>
 ) : (
 services.map((s) => (
-<ServiceRow key={s.id} service={s} onSave={handleUpdateService} onDelete={handleDeleteService} />
+<ServiceRow key={s.id} service={s} onSave={handleUpdateService} onDelete={handleDeleteService} onAddonsChanged={loadServices} />
 ))
 )}
 </div>
@@ -277,11 +280,17 @@ services.map((s) => (
 </div>
 );
 }
-function ServiceRow({ service, onSave, onDelete }) {
+function ServiceRow({ service, onSave, onDelete, onAddonsChanged }) {
 const [name, setName] = useState(service.name);
 const [category, setCategory] = useState(service.category || "");
 const [price, setPrice] = useState(String(service.default_price));
+const [notes, setNotes] = useState(service.notes || "");
 const [err, setErr] = useState("");
+const [expanded, setExpanded] = useState(false);
+const [addonName, setAddonName] = useState("");
+const [addonPrice, setAddonPrice] = useState("");
+const [addonError, setAddonError] = useState("");
+const addons = service.service_addons || [];
 function save() {
 setErr("");
 const trimmedName = name.trim();
@@ -291,10 +300,37 @@ return;
 }
 let p = parseFloat(price);
 if (isNaN(p) || p < 0) p = 0;
-onSave(service.id, { name: trimmedName, category: category.trim(), default_price: p });
+onSave(service.id, { name: trimmedName, category: category.trim(), default_price: p, notes: notes.trim() });
+}
+async function addAddon() {
+setAddonError("");
+const trimmed = addonName.trim();
+if (!trimmed) {
+setAddonError("Add-on name is required.");
+return;
+}
+let p = parseFloat(addonPrice);
+if (isNaN(p) || p < 0) p = 0;
+const { error } = await supabase.from("service_addons").insert({
+service_id: service.id,
+name: trimmed,
+price: p,
+});
+if (error) {
+setAddonError("Couldn't add: " + error.message);
+return;
+}
+setAddonName("");
+setAddonPrice("");
+onAddonsChanged();
+}
+async function removeAddon(id) {
+await supabase.from("service_addons").delete().eq("id", id);
+onAddonsChanged();
 }
 return (
-<div className="order-row">
+<div className="order-row" style={{ flexDirection: "column", alignItems: "stretch" }}>
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
 <div className="order-main" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end", width: "100%" }}>
 <div className="field-sm" style={{ flex: "1.4 1 160px" }}>
 <label>Name</label>
@@ -312,8 +348,45 @@ return (
 </div>
 <div className="order-actions">
 <button className="save-btn" onClick={save}>Save</button>
+<button className="tool-btn" onClick={() => setExpanded((x) => !x)}>
+{expanded ? "Hide Extras" : "Extras" + (addons.length ? " (" + addons.length + ")" : "")}
+</button>
 <button className="del-btn" onClick={() => onDelete(service.id)}>Remove</button>
 </div>
+</div>
+{expanded && (
+<div style={{ marginTop: 12, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+<div className="field-sm" style={{ marginBottom: 12 }}>
+<label>Notes / Details</label>
+<input type="text" placeholder="e.g. Includes up to 5 qts synthetic oil" value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={save} />
+</div>
+{addons.length > 0 && (
+<div style={{ marginBottom: 10 }}>
+{addons.map((a) => (
+<div className="row" key={a.id} style={{ gridTemplateColumns: "1fr auto auto" }}>
+<div className="size-wrap"><span className="size-text">{a.name}</span></div>
+<div className="loc">${Number(a.price).toFixed(2)}</div>
+<div className="row-actions">
+<button className="del-btn" onClick={() => removeAddon(a.id)}>Remove</button>
+</div>
+</div>
+))}
+</div>
+)}
+<div className="field-sm" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+<div style={{ flex: "1.4 1 160px" }}>
+<label>Add-on name</label>
+<input type="text" placeholder="e.g. Synthetic Upgrade" value={addonName} onChange={(e) => setAddonName(e.target.value)} />
+</div>
+<div style={{ flex: "0.6 1 100px" }}>
+<label>Price ($)</label>
+<input type="number" min="0" step="0.01" placeholder="0.00" value={addonPrice} onChange={(e) => setAddonPrice(e.target.value)} />
+</div>
+<button className="add-btn" onClick={addAddon}>+ Add-on</button>
+</div>
+{addonError && <div className="inline-error">{addonError}</div>}
+</div>
+)}
 </div>
 );
 }

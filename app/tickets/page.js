@@ -20,6 +20,7 @@ const router = useRouter();
 const [session, setSession] = useState(undefined);
 const [tickets, setTickets] = useState([]);
 const [services, setServices] = useState([]);
+const [tires, setTires] = useState([]);
 const [loaded, setLoaded] = useState(false);
 const [toast, setToast] = useState("");
 const toastTimer = useRef(null);
@@ -70,16 +71,23 @@ setTickets(data || []);
 async function loadServices() {
 const { data, error } = await supabase
 .from("services")
-.select("*")
+.select("*, service_addons(*)")
 .order("category", { ascending: true })
 .order("name", { ascending: true });
 if (!error) setServices(data || []);
+}
+async function loadTires() {
+const { data, error } = await supabase
+.from("tires")
+.select("*")
+.order("id", { ascending: true });
+if (!error) setTires(data || []);
 }
 useEffect(() => {
 if (!session) return;
 let active = true;
 async function init() {
-await Promise.all([loadTickets(), loadServices()]);
+await Promise.all([loadTickets(), loadServices(), loadTires()]);
 if (active) setLoaded(true);
 }
 init();
@@ -100,12 +108,22 @@ const servicesChannel = supabase
 .on("postgres_changes", { event: "*", schema: "public", table: "services" }, () => {
 if (active) loadServices();
 })
+.on("postgres_changes", { event: "*", schema: "public", table: "service_addons" }, () => {
+if (active) loadServices();
+})
+.subscribe();
+const tiresChannel = supabase
+.channel("tickets-tires-changes")
+.on("postgres_changes", { event: "*", schema: "public", table: "tires" }, () => {
+if (active) loadTires();
+})
 .subscribe();
 return () => {
 active = false;
 supabase.removeChannel(ticketsChannel);
 supabase.removeChannel(itemsChannel);
 supabase.removeChannel(servicesChannel);
+supabase.removeChannel(tiresChannel);
 };
 // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [session]);
@@ -187,6 +205,9 @@ if (error) {
 showToast("Couldn't add item — try again");
 return;
 }
+if (item.tireId) {
+await supabase.from("tires").delete().eq("id", item.tireId);
+}
 loadTickets();
 }
 async function handleRemoveItem(itemId) {
@@ -264,6 +285,7 @@ filteredTickets.map((ticket) => (
 key={ticket.id}
 ticket={ticket}
 services={services}
+tires={tires}
 expanded={expandedId === ticket.id}
 onToggle={() => setExpandedId(expandedId === ticket.id ? null : ticket.id)}
 onStatusChange={handleStatusChange}
@@ -284,19 +306,56 @@ onPrint={() => handlePrintTicket(ticket.id)}
 </div>
 );
 }
-function TicketCard({ ticket, services, expanded, onToggle, onStatusChange, onDelete, onAddItem, onRemoveItem, onPrint }) {
+function TicketCard({ ticket, services, tires, expanded, onToggle, onStatusChange, onDelete, onAddItem, onRemoveItem, onPrint }) {
 const [itemType, setItemType] = useState("service");
 const [description, setDescription] = useState("");
 const [quantity, setQuantity] = useState("1");
 const [unitPrice, setUnitPrice] = useState("");
 const [itemError, setItemError] = useState("");
+const [selectedTireId, setSelectedTireId] = useState("");
+const [expandedServiceId, setExpandedServiceId] = useState(null);
+const [selectedAddonIds, setSelectedAddonIds] = useState([]);
 const total = ticketTotal(ticket);
 const statusClass = "status-" + ticket.status.toLowerCase();
 const customer = ticket.customers;
 function fillFromService(service) {
+const addons = service.service_addons || [];
+if (addons.length > 0 || service.notes) {
+setExpandedServiceId(expandedServiceId === service.id ? null : service.id);
+setSelectedAddonIds([]);
+return;
+}
 setItemType("service");
 setDescription(service.name);
 setUnitPrice(String(service.default_price));
+}
+function toggleAddon(id) {
+setSelectedAddonIds((current) =>
+current.includes(id) ? current.filter((x) => x !== id) : [...current, id]
+);
+}
+function addServiceWithAddons(service) {
+onAddItem({ item_type: "service", description: service.name, quantity: 1, unit_price: Number(service.default_price) || 0 });
+const addons = service.service_addons || [];
+addons
+.filter((a) => selectedAddonIds.includes(a.id))
+.forEach((a) => {
+onAddItem({ item_type: "service", description: a.name, quantity: 1, unit_price: Number(a.price) || 0 });
+});
+setExpandedServiceId(null);
+setSelectedAddonIds([]);
+}
+function handleTireSelect(id) {
+setSelectedTireId(id);
+const tire = tires.find((t) => String(t.id) === String(id));
+if (tire) {
+setDescription(tire.size + (tire.location ? " (Loc " + tire.location + ")" : ""));
+setUnitPrice(tire.price ? String(parsePriceFallback(tire.price)) : "");
+}
+}
+function parsePriceFallback(p) {
+const n = parseFloat(String(p).replace(/[^0-9.]/g, ""));
+return isNaN(n) ? "" : n;
 }
 function addItem() {
 setItemError("");
@@ -309,10 +368,13 @@ let qty = parseInt(quantity, 10);
 if (isNaN(qty) || qty < 1) qty = 1;
 let price = parseFloat(unitPrice);
 if (isNaN(price) || price < 0) price = 0;
-onAddItem({ item_type: itemType, description: desc, quantity: qty, unit_price: price });
+const payload = { item_type: itemType, description: desc, quantity: qty, unit_price: price };
+if (itemType === "tire" && selectedTireId) payload.tireId = selectedTireId;
+onAddItem(payload);
 setDescription("");
 setQuantity("1");
 setUnitPrice("");
+setSelectedTireId("");
 }
 return (
 <div className={"order-row " + statusClass} style={{ flexDirection: "column", alignItems: "stretch" }}>
@@ -368,26 +430,68 @@ onChange={(e) => onStatusChange(ticket.id, e.target.value)}
 <button
 key={s.id}
 type="button"
-className="flag-toggle"
+className={"flag-toggle" + (expandedServiceId === s.id ? " active New" : "")}
 onClick={() => fillFromService(s)}
-title={"Fill in: " + s.name}
+title={(s.service_addons || []).length > 0 || s.notes ? "Show options for: " + s.name : "Fill in: " + s.name}
 >
 {s.name}
 </button>
 ))}
 </div>
+{expandedServiceId !== null && services.find((s) => s.id === expandedServiceId) && (() => {
+const svc = services.find((s) => s.id === expandedServiceId);
+const addons = svc.service_addons || [];
+return (
+<div className="settings-panel" style={{ marginBottom: 12, maxWidth: "none" }}>
+<div style={{ fontWeight: 600, marginBottom: 6 }}>{svc.name} &middot; {money(svc.default_price)}</div>
+{svc.notes && <div className="order-notes" style={{ marginBottom: 10 }}>{svc.notes}</div>}
+{addons.length > 0 && (
+<div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+{addons.map((a) => (
+<label key={a.id} className="flag-chip" style={{ fontSize: 13 }}>
+<input
+type="checkbox"
+checked={selectedAddonIds.includes(a.id)}
+onChange={() => toggleAddon(a.id)}
+/>
+{a.name} (+{money(a.price)})
+</label>
+))}
+</div>
+)}
+<div style={{ display: "flex", gap: 8 }}>
+<button className="add-btn" onClick={() => addServiceWithAddons(svc)}>+ Add to Ticket</button>
+<button className="cancel-btn" onClick={() => setExpandedServiceId(null)}>Cancel</button>
+</div>
+</div>
+);
+})()}
 <div className="add-form" style={{ gridTemplateColumns: "0.7fr 1.6fr 0.5fr 0.7fr auto", marginBottom: 0 }}>
 <div className="field-sm">
 <label>Type</label>
-<select value={itemType} onChange={(e) => setItemType(e.target.value)}>
+<select value={itemType} onChange={(e) => { setItemType(e.target.value); setSelectedTireId(""); setDescription(""); setUnitPrice(""); }}>
 <option value="service">Service</option>
 <option value="tire">Tire</option>
 </select>
 </div>
+{itemType === "tire" ? (
+<div className="field-sm">
+<label>Pick from Inventory</label>
+<select value={selectedTireId} onChange={(e) => handleTireSelect(e.target.value)}>
+<option value="">Choose a tire&hellip;</option>
+{tires.map((t) => (
+<option key={t.id} value={t.id}>
+{t.size} &middot; Rim {t.rim}&Prime; &middot; Loc {t.location ?? "—"}{t.price ? " · " + t.price : ""}
+</option>
+))}
+</select>
+</div>
+) : (
 <div className="field-sm">
 <label>Description</label>
 <input type="text" placeholder="e.g. 225/60/17 mount" value={description} onChange={(e) => setDescription(e.target.value)} />
 </div>
+)}
 <div className="field-sm">
 <label>Qty</label>
 <input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
