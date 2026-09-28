@@ -569,15 +569,15 @@ return (
 ))}
 {item.price && <span className="badge price">{item.price}</span>}
 </div>
-<div className={"audit-label" + (stale ? " stale" : "")}>{auditLabel(item)}</div>
 </div>
 <div className="loc">{loc}</div>
 <div className="row-actions">
 <button className="edit-btn" onClick={onEdit}>Edit</button>
-<button className="verify-btn" onClick={onVerify} title="Mark this tire as verified in its current spot">✓ Verify</button>
+<button className="verify-btn icon-btn" onClick={onVerify} title="Mark verified" aria-label="Mark verified">✓</button>
 <button className="sold-btn" onClick={onSold}>Sold</button>
 <button className="del-btn" onClick={onDelete}>Remove</button>
 </div>
+<div className={"audit-label" + (stale ? " stale" : "")}>{auditLabel(item)}</div>
 </div>
 );
 }
