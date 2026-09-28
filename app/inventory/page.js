@@ -568,6 +568,7 @@ return (
 <span key={f} className={"badge " + f}>{f}</span>
 ))}
 {item.price && <span className="badge price">{item.price}</span>}
+<span className={"audit-dot" + (stale ? " stale" : "")} title={auditLabel(item)} />
 </div>
 </div>
 <div className="loc">{loc}</div>
@@ -577,7 +578,6 @@ return (
 <button className="sold-btn" onClick={onSold}>Sold</button>
 <button className="del-btn" onClick={onDelete}>Remove</button>
 </div>
-<div className={"audit-label" + (stale ? " stale" : "")}>{auditLabel(item)}</div>
 </div>
 );
 }
