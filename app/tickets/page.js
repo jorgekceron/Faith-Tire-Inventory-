@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import PageSkeleton from "@/components/PageSkeleton";
-import { sortCompare } from "@/lib/tireUtils";
+import { sortByRimCompare, groupTiresByRim } from "@/lib/tireUtils";
 const TICKET_STATUSES = ["Open", "Completed", "Paid"];
 function money(n) {
 const num = Number(n) || 0;
@@ -90,7 +90,7 @@ async function loadTires() {
 const { data, error } = await supabase
 .from("tires")
 .select("*");
-if (!error) setTires((data || []).slice().sort(sortCompare));
+if (!error) setTires((data || []).slice().sort(sortByRimCompare));
 }
 useEffect(() => {
 if (!session) return;
@@ -430,10 +430,14 @@ onChange={() => pendingToggleAddon(a.id)}
 <label>Pick from Inventory</label>
 <select value={pendingTireId} onChange={(e) => pendingHandleTireSelect(e.target.value)}>
 <option value="">Choose a tire&hellip;</option>
-{tires.map((t) => (
+{groupTiresByRim(tires).map((g) => (
+<optgroup key={g.rim} label={'Rim ' + g.rim + '"'}>
+{g.items.map((t) => (
 <option key={t.id} value={t.id}>
-{t.size} &middot; Rim {t.rim}&Prime; &middot; Loc {t.location ?? "—"}{t.price ? " · " + t.price : ""}
+{t.size} &middot; Loc {t.location ?? "—"}{t.price ? " · " + t.price : ""}
 </option>
+))}
+</optgroup>
 ))}
 </select>
 </div>
@@ -722,10 +726,14 @@ onChange={() => toggleAddon(a.id)}
 <label>Pick from Inventory</label>
 <select value={selectedTireId} onChange={(e) => handleTireSelect(e.target.value)}>
 <option value="">Choose a tire&hellip;</option>
-{tires.map((t) => (
+{groupTiresByRim(tires).map((g) => (
+<optgroup key={g.rim} label={'Rim ' + g.rim + '"'}>
+{g.items.map((t) => (
 <option key={t.id} value={t.id}>
-{t.size} &middot; Rim {t.rim}&Prime; &middot; Loc {t.location ?? "—"}{t.price ? " · " + t.price : ""}
+{t.size} &middot; Loc {t.location ?? "—"}{t.price ? " · " + t.price : ""}
 </option>
+))}
+</optgroup>
 ))}
 </select>
 </div>
