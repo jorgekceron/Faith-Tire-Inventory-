@@ -223,6 +223,7 @@ a{color:var(--safety);}
  align-items:end;
 }
 @media (max-width:800px){.add-form{grid-template-columns:1fr 1fr;}}
+@media (max-width:480px){.add-form{grid-template-columns:1fr;}.price-input{width:100%;}.flags-row{gap:8px;}}
 .field-sm{display:flex;flex-direction:column;gap:6px;}
 .field-sm label{font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--paper-dim);}
 .field-sm input, .field-sm select{
@@ -535,3 +536,6 @@ button:active{transform:scale(0.96);}
 button:active,.nav-tab:active,.flag-toggle:active,.status-filter-btn:active{transform:none;}
 .panel:hover,.dash-card:hover{transform:none;}
 }
+.add-form-item-row{grid-template-columns:0.7fr 1.6fr 0.5fr 0.7fr auto;}
+@media (max-width:800px){.add-form-item-row{grid-template-columns:1fr 1fr;}}
+@media (max-width:480px){.add-form-item-row,.add-form.order-form,.settings-panel .add-form{grid-template-columns:1fr;}.add-form-item-row button,.add-form.order-form button{grid-column:1 / -1;}}
