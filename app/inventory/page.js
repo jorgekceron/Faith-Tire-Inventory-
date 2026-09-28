@@ -19,6 +19,18 @@ return String(s).replace(/[&<>"']/g, (c) => ({
 "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
 }[c]));
 }
+function daysSinceAudit(t) {
+if (!t.last_audited_at) return null;
+const ms = Date.now() - new Date(t.last_audited_at).getTime();
+return Math.floor(ms / 86400000);
+}
+function auditLabel(t) {
+const d = daysSinceAudit(t);
+if (d === null) return "Never verified";
+if (d === 0) return "Verified today";
+if (d === 1) return "Verified 1 day ago";
+return `Verified ${d} days ago`;
+}
 function highlightHtml(text, q) {
 const safe = escapeHtml(text);
 if (!q) return safe;
@@ -36,7 +48,9 @@ const [editingId, setEditingId] = useState(null);
 const [lastAddedId, setLastAddedId] = useState(null);
 const [toast, setToast] = useState("");
 const toastTimer = useRef(null);
-const [printMode, setPrintMode] = useState("size"); // "size" | "location" | "flag" | "full"
+const [printMode, setPrintMode] = useState("size"); // "size" | "location" | "flag" | "full" | "audit"
+const [needsAuditOnly, setNeedsAuditOnly] = useState(false);
+const AUDIT_STALE_DAYS = 60;
 const [fSize, setFSize] = useState("");
 const [fRim, setFRim] = useState("auto");
 const [fLoc, setFLoc] = useState("");
@@ -188,6 +202,21 @@ setEditingId(null);
 setLastAddedId(id);
 setTimeout(() => setLastAddedId(null), 1700);
 }
+async function handleVerify(id) {
+const now = new Date().toISOString();
+const { data, error } = await supabase
+.from("tires")
+.update({ last_audited_at: now })
+.eq("id", id)
+.select()
+.single();
+if (error) {
+showToast("Couldn't mark as verified — try again");
+return;
+}
+setTires((current) => current.map((t) => (t.id === id ? data : t)));
+showToast("Marked verified");
+}
 async function handleSold(item) {
 const prev = tires;
 setTires((current) => current.filter((t) => t.id !== item.id));
@@ -224,12 +253,18 @@ showToast("Couldn't copy — select and copy manually");
 const rimGroups = useMemo(() => {
 const groups = {};
 RIM_ORDER.forEach((rim) => {
-const all = tires.filter((t) => t.rim === rim).sort(sortCompare);
-const filtered = search ? all.filter((t) => matchesQuery(t, search)) : all;
-if (filtered.length > 0) groups[rim] = filtered;
+let all = tires.filter((t) => t.rim === rim).sort(sortCompare);
+if (search) all = all.filter((t) => matchesQuery(t, search));
+if (needsAuditOnly) {
+all = all.filter((t) => {
+const d = daysSinceAudit(t);
+return d === null || d >= AUDIT_STALE_DAYS;
+});
+}
+if (all.length > 0) groups[rim] = all;
 });
 return groups;
-}, [tires, search]);
+}, [tires, search, needsAuditOnly]);
 const totalMatches = useMemo(
 () => Object.values(rimGroups).reduce((sum, arr) => sum + arr.length, 0),
 [rimGroups]
@@ -266,8 +301,17 @@ title="What to include when printing"
 <option value="location">By Location</option>
 <option value="flag">By Flag (New/Pair/Set)</option>
 <option value="full">Full List</option>
+<option value="audit">Audit Sheet (by Rim)</option>
 </select>
 <button className="tool-btn" onClick={handleCopy}>📋 Copy Summary</button>
+<label className="flag-chip" style={{ marginLeft: 4 }}>
+<input
+type="checkbox"
+checked={needsAuditOnly}
+onChange={(e) => setNeedsAuditOnly(e.target.checked)}
+/>
+Needs audit ({AUDIT_STALE_DAYS}+ days / never verified)
+</label>
 </div>
 <div className="search-wrap">
 <input
@@ -314,6 +358,7 @@ lastAddedId={lastAddedId}
 onDelete={handleDelete}
 onSaveEdit={handleSaveEdit}
 onSold={handleSold}
+onVerify={handleVerify}
 />
 ))}
 </div>
@@ -325,12 +370,20 @@ onSold={handleSold}
 {printMode === "location" && "Grouped by location"}
 {printMode === "flag" && "Grouped by flag"}
 {printMode === "full" && "Full list, sorted by size"}
+{printMode === "audit" && "Audit checklist, grouped by rim size"}
 {" — "}
-{printableTires.length} tires{search ? ` (filtered by "${search}")` : ""}
+{printMode === "audit"
+? RIM_ORDER.reduce((sum, r) => sum + (rimGroups[r] ? rimGroups[r].length : 0), 0)
+: printableTires.length}{" "}
+tires{search ? ` (filtered by "${search}")` : ""}{printMode === "audit" && needsAuditOnly ? " — needs-audit only" : ""}
 </div>
 {printMode === "size" &&
 RIM_ORDER.filter((rim) => rimGroups[rim] && rimGroups[rim].length > 0).map((rim) => (
 <PrintGroup key={rim} title={`Rim ${rim}"`} items={rimGroups[rim]} />
+))}
+{printMode === "audit" &&
+RIM_ORDER.filter((rim) => rimGroups[rim] && rimGroups[rim].length > 0).map((rim) => (
+<AuditPrintGroup key={rim} title={`Rim ${rim}"`} items={rimGroups[rim]} />
 ))}
 {printMode === "location" &&
 locationGroups.map((g) => (
@@ -374,6 +427,39 @@ return (
 <td>{item.location ?? "—"}</td>
 <td>{item.flags || ""}</td>
 <td>{item.price || ""}</td>
+</tr>
+))}
+</tbody>
+</table>
+</div>
+);
+}
+function AuditPrintGroup({ title, items }) {
+return (
+<div className="print-group">
+<div className="print-group-title">{title} <span>({items.length})</span></div>
+<table className="print-table audit-table">
+<thead>
+<tr>
+<th className="audit-check-col">✓</th>
+<th>Tire Size</th>
+<th>App Location</th>
+<th>Flags</th>
+<th>Price</th>
+<th>Last Verified</th>
+<th>Notes (if moved / missing)</th>
+</tr>
+</thead>
+<tbody>
+{items.map((item) => (
+<tr key={item.id}>
+<td className="audit-check-col"><span className="audit-checkbox" /></td>
+<td>{item.size}</td>
+<td>{item.location ?? "—"}</td>
+<td>{item.flags || ""}</td>
+<td>{item.price || ""}</td>
+<td>{auditLabel(item)}</td>
+<td className="audit-notes-col"></td>
 </tr>
 ))}
 </tbody>
@@ -431,7 +517,7 @@ onChange={(e) => setFPrice(e.target.value)}
 </div>
 );
 }
-function RimPanel({ rim, items, search, editingId, setEditingId, lastAddedId, onDelete, onSaveEdit, onSold }) {
+function RimPanel({ rim, items, search, editingId, setEditingId, lastAddedId, onDelete, onSaveEdit, onSold, onVerify }) {
 return (
 <div className="panel">
 <div className="panel-head">
@@ -457,6 +543,7 @@ flash={item.id === lastAddedId}
 onEdit={() => setEditingId(item.id)}
 onDelete={() => onDelete(item.id)}
 onSold={() => onSold(item)}
+onVerify={() => onVerify(item.id)}
 />
 )
 )))}
@@ -464,10 +551,14 @@ onSold={() => onSold(item)}
 </div>
 );
 }
-function Row({ item, search, flash, onEdit, onDelete, onSold }) {
+function Row({ item, search, flash, onEdit, onDelete, onSold, onVerify }) {
 const flagList = (item.flags || "").split(",").map((f) => f.trim()).filter(Boolean);
 const flagClasses = flagList.map((f) => "has-" + f).join(" ");
 const loc = item.location === null || item.location === undefined || item.location === "" ? "—" : item.location;
+const stale = (() => {
+const d = daysSinceAudit(item);
+return d === null || d >= 60;
+})();
 return (
 <div className={"row " + flagClasses + (flash ? " flash" : "")}>
 <div className="size-wrap">
@@ -478,10 +569,12 @@ return (
 ))}
 {item.price && <span className="badge price">{item.price}</span>}
 </div>
+<div className={"audit-label" + (stale ? " stale" : "")}>{auditLabel(item)}</div>
 </div>
 <div className="loc">{loc}</div>
 <div className="row-actions">
 <button className="edit-btn" onClick={onEdit}>Edit</button>
+<button className="verify-btn" onClick={onVerify} title="Mark this tire as verified in its current spot">✓ Verify</button>
 <button className="sold-btn" onClick={onSold}>Sold</button>
 <button className="del-btn" onClick={onDelete}>Remove</button>
 </div>
