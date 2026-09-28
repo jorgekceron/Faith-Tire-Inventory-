@@ -561,6 +561,7 @@ return d === null || d >= 60;
 })();
 return (
 <div className={"row " + flagClasses + (flash ? " flash" : "")}>
+<div className="row-line1">
 <div className="size-wrap">
 <span className="size-text" dangerouslySetInnerHTML={{ __html: highlightHtml(item.size, search) }} />
 <div className="badges">
@@ -568,15 +569,18 @@ return (
 <span key={f} className={"badge " + f}>{f}</span>
 ))}
 {item.price && <span className="badge price">{item.price}</span>}
-<span className={"audit-dot" + (stale ? " stale" : "")} title={auditLabel(item)} />
 </div>
 </div>
 <div className="loc">{loc}</div>
+</div>
+<div className="row-line2">
+<span className={"audit-text" + (stale ? " stale" : "")}>{auditLabel(item)}</span>
 <div className="row-actions">
 <button className="edit-btn" onClick={onEdit}>Edit</button>
 <button className="verify-btn icon-btn" onClick={onVerify} title="Mark verified" aria-label="Mark verified">✓</button>
 <button className="sold-btn" onClick={onSold}>Sold</button>
 <button className="del-btn" onClick={onDelete}>Remove</button>
+</div>
 </div>
 </div>
 );
